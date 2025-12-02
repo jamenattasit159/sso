@@ -41,4 +41,19 @@ function base_url($path = '')
     $base = "$protocol://$host" . dirname($_SERVER['PHP_SELF']);
     return $base . '/' . ltrim($path, '/');
 }
+// --- เพิ่มต่อท้ายไฟล์ config.php ---
+
+// ฟังก์ชันแปลง ID เป็นรหัส (เช่น 1 -> MjE=)
+function encode_id($id)
+{
+    // ใช้ base64 ผสมกับตัวเลขสุ่มเล็กน้อยเพื่อไม่ให้เดาง่ายเกินไป
+    return rtrim(base64_encode(($id * 123456789)), '=');
+}
+
+// ฟังก์ชันแปลงรหัสกลับเป็น ID
+function decode_id($encoded)
+{
+    $id = base64_decode($encoded);
+    return ($id / 123456789);
+}
 ?>

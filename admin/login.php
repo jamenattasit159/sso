@@ -2,29 +2,46 @@
 session_start();
 require '../config.php';
 
+// ถ้าล็อกอินอยู่แล้ว ดีดไปหน้าแรก
+if (isset($_SESSION['admin_id'])) {
+    header('Location: index.php');
+    exit;
+}
+
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $username = $_POST['username'] ?? '';
     $password = $_POST['password'] ?? '';
-    
+
     if (empty($username) || empty($password)) {
         $error = 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน';
     } else {
         try {
+            // 1. ดึงข้อมูล User จาก Username
             $stmt = $pdo->prepare("SELECT * FROM admin_users WHERE username = ? AND status = 'active'");
             $stmt->execute([$username]);
             $user = $stmt->fetch();
-            
+
+            // 2. ตรวจสอบรหัสผ่าน
             if ($user && password_verify($password, $user['password'])) {
-                $_SESSION['admin_id'] = $user['id'];
-                $_SESSION['username'] = $user['username'];
-                header('Location: index.php');
+
+                // สร้าง Session ชั่วคราว (ยังไม่ถือว่าล็อกอินสมบูรณ์)
+                $_SESSION['temp_admin_id'] = $user['id'];
+
+                if (!empty($user['google_2fa_secret'])) {
+                    // CASE A: เคยตั้งค่าแล้ว -> ไปหน้ากรอกรหัส 6 หลัก
+                    header('Location: verify_2fa.php');
+                } else {
+                    // CASE B: ยังไม่เคยตั้งค่า -> บังคับไปหน้าสแกน QR Code เดี๋ยวนี้!
+                    header('Location: setup_2fa.php');
+                }
                 exit;
+
             } else {
                 $error = 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง';
             }
-        } catch(Exception $e) {
+        } catch (Exception $e) {
             $error = 'เกิดข้อผิดพลาด: ' . $e->getMessage();
         }
     }
@@ -33,116 +50,96 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
 <!DOCTYPE html>
 <html lang="th">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>เข้าสู่ระบบแอดมิน</title>
     <link rel="stylesheet" href="../assets/css/style.css">
     <style>
-        .login-container {
+        body {
+            background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
             display: flex;
-            justify-content: center;
             align-items: center;
-            min-height: 100vh;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            justify-content: center;
+            height: 100vh;
         }
+
         .login-box {
             background: white;
             padding: 40px;
-            border-radius: 10px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
             width: 100%;
             max-width: 400px;
         }
-        .login-box h1 {
+
+        .login-box h2 {
             text-align: center;
-            margin-bottom: 30px;
             color: #333;
-        }
-        .form-group {
             margin-bottom: 20px;
         }
-        .form-group label {
-            display: block;
-            margin-bottom: 8px;
-            color: #555;
-            font-weight: bold;
-        }
-        .form-group input {
+
+        .form-control {
             width: 100%;
             padding: 12px;
+            margin-bottom: 15px;
             border: 1px solid #ddd;
-            border-radius: 5px;
-            font-size: 14px;
+            border-radius: 6px;
+            box-sizing: border-box;
         }
-        .form-group input:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 5px rgba(102, 126, 234, 0.5);
-        }
+
         .btn-login {
             width: 100%;
             padding: 12px;
-            background: #667eea;
+            background: #f97316;
             color: white;
             border: none;
-            border-radius: 5px;
-            font-size: 16px;
+            border-radius: 6px;
             font-weight: bold;
             cursor: pointer;
-            transition: background 0.3s;
+            transition: 0.3s;
         }
+
         .btn-login:hover {
-            background: #5568d3;
+            background: #c2410c;
         }
-        .error-message {
-            background: #f8d7da;
-            color: #721c24;
-            padding: 12px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            border: 1px solid #f5c6cb;
-        }
-        .info-message {
-            background: #d1ecf1;
-            color: #0c5460;
-            padding: 12px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            border: 1px solid #bee5eb;
-            font-size: 12px;
+
+        .error-msg {
+            background: #fee2e2;
+            color: #ef4444;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            text-align: center;
         }
     </style>
 </head>
+
 <body>
-    <div class="login-container">
-        <div class="login-box">
-            <h1>🔐 เข้าสู่ระบบแอดมิน</h1>
-            
-            <?php if (!empty($error)): ?>
-                <div class="error-message"><?php echo htmlspecialchars($error); ?></div>
-            <?php endif; ?>
-            
-            <div class="info-message">
-                <strong>ข้อมูลทดสอบ:</strong><br>
-                Username: <code>admin</code><br>
-                Password: <code>password</code>
+    <div class="login-box">
+        <h2>🔐 เข้าสู่ระบบ</h2>
+
+        <?php if ($error): ?>
+            <div class="error-msg"><?php echo $error; ?></div>
+        <?php endif; ?>
+
+        <form method="POST">
+            <input type="text" name="username" class="form-control" placeholder="ชื่อผู้ใช้" required autofocus>
+            <input type="password" name="password" class="form-control" placeholder="รหัสผ่าน" required>
+            <div style="text-align: right; margin-top: 5px;">
+                <a href="forgot_password.php"
+                    style="font-size: 12px; color: #667eea; text-decoration: none;">ลืมรหัสผ่าน?</a>
             </div>
-            
-            <form method="POST">
-                <div class="form-group">
-                    <label for="username">ชื่อผู้ใช้:</label>
-                    <input type="text" id="username" name="username" required autofocus>
-                </div>
-                
-                <div class="form-group">
-                    <label for="password">รหัสผ่าน:</label>
-                    <input type="password" id="password" name="password" required>
-                </div>
-                
-                <button type="submit" class="btn-login">เข้าสู่ระบบ</button>
-            </form>
+            <button type="submit" class="btn-login">เข้าสู่ระบบ</button>
+        </form>
+
+        <div style="margin-top: 20px; text-align: center; font-size: 12px; color: #666;">
+            ระบบความปลอดภัย SSO Angthong
         </div>
+       
     </div>
 </body>
+
 </html>

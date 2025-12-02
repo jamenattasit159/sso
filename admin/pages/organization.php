@@ -1,4 +1,6 @@
 <?php
+// admin/pages/organization.php
+
 // ตรวจสอบ Session
 if (!isset($_SESSION['admin_id'])) {
     header('Location: ../login.php');
@@ -7,7 +9,7 @@ if (!isset($_SESSION['admin_id'])) {
 
 $message = '';
 
-// จัดการข้อมูลหน่วยงาน
+// จัดการการบันทึกข้อมูล
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $action = $_POST['action'] ?? '';
 
@@ -19,230 +21,154 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $phone = $_POST['phone'] ?? '';
         $email = $_POST['email'] ?? '';
         $address = $_POST['address'] ?? '';
+
+        // ค่าเริ่มต้นเอามาจาก Input hidden (ซึ่งจะเปลี่ยนเมื่อเลือก emoji หรืออัปโหลด)
         $icon = $_POST['icon'] ?? '🏥';
 
-        if (empty($name)) {
-            $message = '<div class="alert alert-error">✗ กรุณากรอกชื่อหน่วยงาน</div>';
-        } else {
+        // --- ส่วนจัดการอัปโหลดโลโก้ (เพิ่มรองรับ .ico) ---
+        if (isset($_FILES['custom_logo']) && $_FILES['custom_logo']['error'] == 0) {
+            // เพิ่ม 'ico' ในรายการที่อนุญาต
+            $allowed = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'ico'];
+            $filename = $_FILES['custom_logo']['name'];
+            $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+
+            if (in_array($ext, $allowed)) {
+                // สร้างโฟลเดอร์ถ้ายังไม่มี
+                $uploadDir = '../uploads/logos/';
+                if (!is_dir($uploadDir)) {
+                    mkdir($uploadDir, 0755, true);
+                }
+
+                // สร้างชื่อไฟล์ใหม่
+                $newFilename = 'logo_' . time() . '.' . $ext;
+                $uploadPath = $uploadDir . $newFilename;
+
+                if (move_uploaded_file($_FILES['custom_logo']['tmp_name'], $uploadPath)) {
+                    // ถ้าอัปโหลดสำเร็จ ใช้ path นี้เป็น icon
+                    $icon = 'uploads/logos/' . $newFilename;
+                }
+            } else {
+                $message = '<div class="alert alert-error">❌ ไฟล์รองรับเฉพาะรูปภาพ (JPG, PNG, GIF, WEBP, ICO) เท่านั้น</div>';
+            }
+        }
+        // ------------------------------
+
+        if (empty($message)) {
             try {
                 $stmt = $pdo->prepare(
                     "UPDATE organization_info SET name=?, description=?, vision=?, mission=?, phone=?, email=?, address=?, logo=?, updated_at=NOW() WHERE id=1"
                 );
                 $stmt->execute([$name, $description, $vision, $mission, $phone, $email, $address, $icon]);
-                $message = '<div class="alert alert-success">✓ อัพเดทข้อมูลหน่วยงานเสร็จแล้ว</div>';
+                $message = '<div class="alert alert-success">✓ บันทึกข้อมูลหน่วยงานเรียบร้อยแล้ว</div>';
             } catch (Exception $e) {
-                $message = '<div class="alert alert-error">✗ เกิดข้อผิดพลาด</div>';
+                $message = '<div class="alert alert-error">❌ เกิดข้อผิดพลาด: ' . $e->getMessage() . '</div>';
             }
         }
     }
 }
 
-// ดึงข้อมูลหน่วยงาน
+// ดึงข้อมูลหน่วยงานปัจจุบัน
 $orgInfo = $pdo->query("SELECT * FROM organization_info LIMIT 1")->fetch();
 
-// ถ้าไม่มีข้อมูลให้สร้างใหม่
 if (!$orgInfo) {
-    $pdo->query("INSERT INTO organization_info (name, description, vision, mission, logo) VALUES ('สถาบันอุตสาหกรรมสุขภาพ', '', '', '', '🏥')");
+    $pdo->query("INSERT INTO organization_info (id, name, logo) VALUES (1, 'สถาบันอุตสาหกรรมสุขภาพ', '🏥')");
     $orgInfo = $pdo->query("SELECT * FROM organization_info LIMIT 1")->fetch();
 }
+
+$currentLogo = $orgInfo['logo'] ?? '🏥';
+$isCustomLogo = strpos($currentLogo, 'uploads/') !== false;
 ?>
 
 <style>
-    .admin-form {
-        background: white;
-        padding: 20px;
-        border-radius: 8px;
-        margin-bottom: 30px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    }
-
-    .form-section {
-        margin-bottom: 30px;
-        padding-bottom: 30px;
-        border-bottom: 2px solid #ecf0f1;
-    }
-
-    .form-section:last-child {
-        border-bottom: none;
-    }
-
-    .form-section h3 {
-        margin-bottom: 20px;
-        color: #2c3e50;
-        font-size: 16px;
-    }
-
-    .form-group {
-        margin-bottom: 15px;
-    }
-
-    .form-group label {
-        display: block;
-        margin-bottom: 8px;
-        font-weight: bold;
-        color: #333;
-    }
-
-    .form-group input,
-    .form-group textarea {
-        width: 100%;
-        padding: 10px;
-        border: 1px solid #ddd;
-        border-radius: 5px;
-        font-size: 14px;
-        font-family: inherit;
-    }
-
-    .form-group textarea {
-        resize: vertical;
-        min-height: 100px;
-    }
-
-    .form-group input:focus,
-    .form-group textarea:focus {
-        outline: none;
-        border-color: #667eea;
-        box-shadow: 0 0 5px rgba(102, 126, 234, 0.5);
-    }
-
-    .form-row {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
+    .icon-section-wrapper {
+        display: flex;
+        flex-wrap: wrap;
         gap: 15px;
+        align-items: flex-start;
     }
 
     .icon-selector {
-        display: grid;
-        grid-template-columns: repeat(6, 1fr);
+        display: flex;
+        flex-wrap: wrap;
         gap: 10px;
-        margin-top: 10px;
+        flex: 1;
     }
 
     .icon-option {
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 100%;
-        aspect-ratio: 1;
+        width: 50px;
+        height: 50px;
         border: 2px solid #ddd;
         border-radius: 8px;
-        font-size: 32px;
+        font-size: 24px;
         cursor: pointer;
-        transition: all 0.3s;
-        background: #f8f9fa;
+        transition: all 0.2s;
+        background: #fff;
+        position: relative;
+        overflow: hidden;
     }
 
     .icon-option:hover {
         border-color: #667eea;
         background: #eef2f8;
-        transform: scale(1.1);
+        transform: scale(1.05);
     }
 
     .icon-option.active {
         border-color: #667eea;
         background: #667eea;
         color: white;
-        box-shadow: 0 0 10px rgba(102, 126, 234, 0.5);
+        box-shadow: 0 4px 6px rgba(102, 126, 234, 0.3);
+    }
+
+    /* สไตล์สำหรับกล่องอัปโหลดที่ทำเนียนไปกับ Emoji */
+    .custom-upload-box {
+        width: 50px;
+        height: 50px;
+        border: 2px dashed #cbd5e1;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        color: #64748b;
+        background: #f8fafc;
+        transition: all 0.2s;
+        position: relative;
+    }
+
+    .custom-upload-box:hover {
+        border-color: #667eea;
+        color: #667eea;
+        background: #fff;
+    }
+
+    .custom-upload-box input[type="file"] {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        opacity: 0;
+        cursor: pointer;
+    }
+
+    .custom-logo-preview {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        padding: 5px;
     }
 
     .preview-section {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
-        padding: 20px;
+        padding: 15px;
         border-radius: 8px;
-        margin-top: 20px;
-    }
-
-    .preview-section h4 {
-        margin-bottom: 10px;
-        font-size: 14px;
-        opacity: 0.9;
-    }
-
-    .preview-navbar {
+        margin-top: 15px;
         display: flex;
         align-items: center;
         gap: 15px;
-        font-size: 18px;
-    }
-
-    .preview-icon {
-        font-size: 32px;
-    }
-
-    .preview-title {
-        font-size: 20px;
-        font-weight: bold;
-    }
-
-    .btn-group {
-        display: flex;
-        gap: 10px;
-        margin-top: 20px;
-    }
-
-    .btn {
-        padding: 10px 20px;
-        border: none;
-        border-radius: 5px;
-        cursor: pointer;
-        font-weight: bold;
-        transition: background 0.3s;
-    }
-
-    .btn-primary {
-        background: #667eea;
-        color: white;
-    }
-
-    .btn-primary:hover {
-        background: #5568d3;
-    }
-
-    .btn-secondary {
-        background: #6c757d;
-        color: white;
-    }
-
-    .btn-secondary:hover {
-        background: #5a6268;
-    }
-
-    .alert {
-        padding: 12px;
-        border-radius: 5px;
-        margin-bottom: 20px;
-    }
-
-    .alert-success {
-        background: #d4edda;
-        color: #155724;
-        border: 1px solid #c3e6cb;
-    }
-
-    .alert-error {
-        background: #f8d7da;
-        color: #721c24;
-        border: 1px solid #f5c6cb;
-    }
-
-    .info-box {
-        background: #e7f5ff;
-        color: #1971c2;
-        padding: 15px;
-        border-radius: 8px;
-        margin-bottom: 20px;
-        border-left: 4px solid #1971c2;
-    }
-
-    @media (max-width: 768px) {
-        .form-row {
-            grid-template-columns: 1fr;
-        }
-
-        .icon-selector {
-            grid-template-columns: repeat(4, 1fr);
-        }
     }
 </style>
 
@@ -250,18 +176,12 @@ if (!$orgInfo) {
 
 <?php echo $message; ?>
 
-<div class="info-box">
-    <i class="fas fa-info-circle"></i>
-    ข้อมูลที่แก้ไขที่นี่จะปรากฏในทุกส่วนของเว็บไซต์ (Navbar, Footer, Title)
-</div>
-
 <div class="admin-form">
-    <form method="POST">
+    <form method="POST" enctype="multipart/form-data">
         <input type="hidden" name="action" value="update_organization">
 
-        <!-- ส่วนชื่อหน่วยงานและ Icon -->
-        <div class="form-section">
-            <h3>📌 ชื่อหน่วยงานและไอคอน</h3>
+        <div class="form-section" style="border-bottom: 1px solid #eee; padding-bottom: 20px; margin-bottom: 20px;">
+            <h3>📌 ชื่อและสัญลักษณ์</h3>
 
             <div class="form-group">
                 <label>📛 ชื่อหน่วยงาน *</label>
@@ -270,121 +190,147 @@ if (!$orgInfo) {
             </div>
 
             <div class="form-group">
-                <label>🎨 เลือกไอคอน</label>
-                <div class="icon-selector">
-                    <div class="icon-option <?php echo ($orgInfo['logo'] === '🏥' ? 'active' : ''); ?>"
-                        onclick="selectIcon('🏥')" title="โรงพยาบาล">🏥</div>
-                    <div class="icon-option <?php echo ($orgInfo['logo'] === '🏢' ? 'active' : ''); ?>"
-                        onclick="selectIcon('🏢')" title="สถาบัน">🏢</div>
-                    <div class="icon-option <?php echo ($orgInfo['logo'] === '🏛️' ? 'active' : ''); ?>"
-                        onclick="selectIcon('🏛️')" title="สำนักงาน">🏛️</div>
-                    <div class="icon-option <?php echo ($orgInfo['logo'] === '🎓' ? 'active' : ''); ?>"
-                        onclick="selectIcon('🎓')" title="การศึกษา">🎓</div>
-                    <div class="icon-option <?php echo ($orgInfo['logo'] === '⚕️' ? 'active' : ''); ?>"
-                        onclick="selectIcon('⚕️')" title="สุขภาพ">⚕️</div>
-                    <div class="icon-option <?php echo ($orgInfo['logo'] === '🔬' ? 'active' : ''); ?>"
-                        onclick="selectIcon('🔬')" title="วิทยาศาสตร์">🔬</div>
-                    <div class="icon-option <?php echo ($orgInfo['logo'] === '🏆' ? 'active' : ''); ?>"
-                        onclick="selectIcon('🏆')" title="รางวัล">🏆</div>
-                    <div class="icon-option <?php echo ($orgInfo['logo'] === '⭐' ? 'active' : ''); ?>"
-                        onclick="selectIcon('⭐')" title="ดาว">⭐</div>
-                    <div class="icon-option <?php echo ($orgInfo['logo'] === '🌟' ? 'active' : ''); ?>"
-                        onclick="selectIcon('🌟')" title="ดาวสว่าง">🌟</div>
-                    <div class="icon-option <?php echo ($orgInfo['logo'] === '💼' ? 'active' : ''); ?>"
-                        onclick="selectIcon('💼')" title="ธุรกิจ">💼</div>
-                    <div class="icon-option <?php echo ($orgInfo['logo'] === '🎯' ? 'active' : ''); ?>"
-                        onclick="selectIcon('🎯')" title="เป้าหมาย">🎯</div>
-                    <div class="icon-option <?php echo ($orgInfo['logo'] === '🚀' ? 'active' : ''); ?>"
-                        onclick="selectIcon('🚀')" title="ก้าวหน้า">🚀</div>
+                <label>🎨 เลือกสัญลักษณ์ (Emoji หรือ อัปโหลดไฟล์ .ico/.png)</label>
+
+                <div class="icon-section-wrapper">
+                    <div class="custom-upload-box <?php echo $isCustomLogo ? 'active' : ''; ?>"
+                        title="อัปโหลดรูปภาพใหม่">
+                        <?php if ($isCustomLogo): ?>
+                            <img src="../<?php echo htmlspecialchars($currentLogo); ?>" class="custom-logo-preview">
+                        <?php else: ?>
+                            <i class="fas fa-plus"></i>
+                        <?php endif; ?>
+                        <input type="file" name="custom_logo" accept=".jpg,.jpeg,.png,.gif,.webp,.ico"
+                            onchange="previewUpload(this)">
+                    </div>
+
+                    <div class="icon-selector">
+                        <?php
+                        $emojis = ['🏥', '🏢', '🏛️', '🎓', '⚕️', '🔬', '🏆', '⭐', '🌟', '💼', '🎯', '🚀'];
+                        foreach ($emojis as $emo) {
+                            // ถ้าปัจจุบันไม่ใช่รูปภาพ และตรงกับ Emoji นี้ ให้ Active
+                            $active = (!$isCustomLogo && $currentLogo === $emo) ? 'active' : '';
+                            echo "<div class='icon-option $active' onclick=\"selectIcon('$emo')\">$emo</div>";
+                        }
+                        ?>
+                    </div>
                 </div>
-                <input type="hidden" id="iconInput" name="icon"
-                    value="<?php echo htmlspecialchars($orgInfo['logo'] ?? '🏥'); ?>">
+
+                <p style="font-size: 12px; color: #666; margin-top: 5px;">* กดที่กล่อง <i class="fas fa-plus"
+                        style="border:1px dashed #ccc; padding:2px;"></i> เพื่ออัปโหลดไฟล์ (.ico, .png, .jpg)</p>
+
+                <input type="hidden" id="iconInput" name="icon" value="<?php echo htmlspecialchars($currentLogo); ?>">
             </div>
 
-            <!-- Preview -->
             <div class="preview-section">
-                <h4>👀 ตัวอย่างการแสดงผล (Navbar)</h4>
-                <div class="preview-navbar">
-                    <div class="preview-icon" id="previewIcon"><?php echo $orgInfo['logo'] ?? '🏥'; ?></div>
-                    <div class="preview-title" id="previewName"><?php echo htmlspecialchars($orgInfo['name'] ?? ''); ?>
+                <div style="font-weight: bold; opacity: 0.8; font-size: 12px; margin-right: 10px;">ตัวอย่าง:</div>
+                <div style="display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: bold;">
+                    <div id="previewIcon">
+                        <?php
+                        if ($isCustomLogo) {
+                            echo '<img src="../' . $currentLogo . '" style="height: 40px; border-radius: 4px; vertical-align: middle;">';
+                        } else {
+                            echo $currentLogo;
+                        }
+                        ?>
                     </div>
+                    <div id="previewName"><?php echo htmlspecialchars($orgInfo['name'] ?? 'ชื่อหน่วยงาน'); ?></div>
                 </div>
             </div>
         </div>
 
-        <!-- ส่วนข้อมูลทั่วไป -->
         <div class="form-section">
             <h3>📝 ข้อมูลทั่วไป</h3>
-
             <div class="form-group">
                 <label>📄 คำอธิบายหน่วยงาน</label>
                 <textarea name="description"
-                    placeholder="กรอกคำอธิบายเกี่ยวกับหน่วยงาน"><?php echo htmlspecialchars($orgInfo['description'] ?? ''); ?></textarea>
+                    rows="3"><?php echo htmlspecialchars($orgInfo['description'] ?? ''); ?></textarea>
             </div>
-
             <div class="form-group">
                 <label>🎯 วิสัยทัศน์ (Vision)</label>
-                <textarea name="vision"
-                    placeholder="กรอกวิสัยทัศน์ของหน่วยงาน"><?php echo htmlspecialchars($orgInfo['vision'] ?? ''); ?></textarea>
+                <textarea name="vision" rows="3"><?php echo htmlspecialchars($orgInfo['vision'] ?? ''); ?></textarea>
             </div>
-
             <div class="form-group">
                 <label>🎪 พันธกิจ (Mission)</label>
-                <textarea name="mission"
-                    placeholder="กรอกพันธกิจของหน่วยงาน"><?php echo htmlspecialchars($orgInfo['mission'] ?? ''); ?></textarea>
+                <textarea name="mission" rows="3"><?php echo htmlspecialchars($orgInfo['mission'] ?? ''); ?></textarea>
             </div>
         </div>
 
-        <!-- ส่วนข้อมูลติดต่อ -->
-        <div class="form-section">
+        <div class="form-section" style="margin-top: 20px;">
             <h3>📞 ข้อมูลติดต่อ</h3>
-
-            <div class="form-row">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                 <div class="form-group">
                     <label>📱 เบอร์โทรศัพท์</label>
-                    <input type="tel" name="phone" value="<?php echo htmlspecialchars($orgInfo['phone'] ?? ''); ?>"
-                        placeholder="เช่น +66-XX-XXXX-XXXX">
+                    <input type="tel" name="phone" value="<?php echo htmlspecialchars($orgInfo['phone'] ?? ''); ?>">
                 </div>
-
                 <div class="form-group">
                     <label>✉️ อีเมล</label>
-                    <input type="email" name="email" value="<?php echo htmlspecialchars($orgInfo['email'] ?? ''); ?>"
-                        placeholder="เช่น admin@hospital.com">
+                    <input type="email" name="email" value="<?php echo htmlspecialchars($orgInfo['email'] ?? ''); ?>">
                 </div>
             </div>
-
             <div class="form-group">
                 <label>📍 ที่อยู่</label>
-                <textarea name="address"
-                    placeholder="กรอกที่อยู่ของหน่วยงาน"><?php echo htmlspecialchars($orgInfo['address'] ?? ''); ?></textarea>
+                <textarea name="address" rows="3"><?php echo htmlspecialchars($orgInfo['address'] ?? ''); ?></textarea>
             </div>
         </div>
 
-        <!-- ปุ่มบันทึก -->
-        <div class="btn-group">
-            <button type="submit" class="btn btn-primary">💾 บันทึกข้อมูล</button>
+        <div style="margin-top: 20px;">
+            <button type="submit" class="btn btn-primary" style="padding: 12px 25px; font-size: 16px;">💾
+                บันทึกข้อมูล</button>
         </div>
     </form>
 </div>
 
 <script>
     function selectIcon(icon) {
-        // ยกเลิก active ทั้งหมด
-        document.querySelectorAll('.icon-option').forEach(el => {
-            el.classList.remove('active');
-        });
+        // ยกเลิก active ทั้งหมด (รวมถึงกล่องอัปโหลด)
+        document.querySelectorAll('.icon-option, .custom-upload-box').forEach(el => el.classList.remove('active'));
 
-        // เพิ่ม active ให้ไอคอนที่เลือก
+        // เพิ่ม active ให้ Emoji ที่เลือก
         event.target.classList.add('active');
 
-        // บันทึกค่า
+        // อัปเดตค่า input เป็น Emoji
         document.getElementById('iconInput').value = icon;
 
-        // อัพเดท Preview
-        document.getElementById('previewIcon').textContent = icon;
+        // อัปเดต Preview เป็น Text Emoji
+        document.getElementById('previewIcon').innerHTML = icon;
+
+        // เคลียร์ค่าไฟล์ที่เลือกไว้ (เพื่อให้รู้ว่าเราเลือก Emoji แทน)
+        document.querySelector('input[name="custom_logo"]').value = '';
     }
 
-    // อัพเดท Preview เมื่อพิมพ์ชื่อ
+    function previewUpload(input) {
+        if (input.files && input.files[0]) {
+            var reader = new FileReader();
+
+            reader.onload = function (e) {
+                // ยกเลิก active ที่ Emoji
+                document.querySelectorAll('.icon-option').forEach(el => el.classList.remove('active'));
+
+                // เพิ่ม active ให้กล่องอัปโหลด
+                document.querySelector('.custom-upload-box').classList.add('active');
+
+                // อัปเดต Preview เป็นรูปภาพ
+                var imgHtml = '<img src="' + e.target.result + '" style="height: 40px; border-radius: 4px; vertical-align: middle;">';
+                document.getElementById('previewIcon').innerHTML = imgHtml;
+
+                // แสดงรูปในกล่องอัปโหลดด้วย (แทนไอคอนบวก)
+                var box = document.querySelector('.custom-upload-box');
+                // เก็บ input ไว้ นอกนั้นลบ (icon plus) แล้วใส่ img
+                var fileInput = box.querySelector('input[type="file"]');
+                box.innerHTML = '';
+                var thumb = document.createElement('img');
+                thumb.src = e.target.result;
+                thumb.className = 'custom-logo-preview';
+                box.appendChild(thumb);
+                box.appendChild(fileInput); // ใส่ input กลับเข้าไป
+            }
+
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+
+    // อัปเดตชื่อใน Preview Real-time
     document.querySelector('input[name="name"]').addEventListener('input', function () {
         document.getElementById('previewName').textContent = this.value || 'ชื่อหน่วยงาน';
     });

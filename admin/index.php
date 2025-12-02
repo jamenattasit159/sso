@@ -24,7 +24,6 @@ $page = $_GET['page'] ?? 'dashboard';
 
 <body>
     <div class="admin-container">
-        <!-- Sidebar -->
         <div class="sidebar">
             <div class="admin-header">
                 <h2>⚙️ ระบบจัดการ</h2>
@@ -37,13 +36,27 @@ $page = $_GET['page'] ?? 'dashboard';
                 <li><a href="?page=dashboard">📊 แดชบอร์ด</a></li>
                 <li><a href="?page=organization">🏢 ข้อมูลหน่วยงาน</a></li>
                 <li><a href="?page=banners">📸 จัดการแบนเนอร์</a></li>
+                <li><a href="?page=pr_images">🖼️ รูปประชาสัมพันธ์</a></li>
                 <li><a href="?page=directors">👔 จัดการผู้บริหาร</a></li>
                 <li><a href="?page=announcements">📢 จัดการประกาศ</a></li>
+                <li><a href="?page=files">📂 จัดการไฟล์ทั่วไป</a></li>
+                <li><a href="?page=buttons">🔗 จัดการเมนูข้าง/ปุ่ม</a></li>
+                <li><a href="?page=manage_pages">📝 สร้าง/จัดการหน้าเนื้อหา</a></li>
+                <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'super_admin'): ?>
+                    <li style="border-top: 1px solid rgba(255,255,255,0.1); margin-top: 10px; padding-top: 10px;">
+                        <span style="padding-left: 15px; font-size: 11px; color: #64748b; text-transform: uppercase;">Super
+                            Admin</span>
+                    </li>
+                    <li>
+                        <a href="?page=users" style="color: #fca5a5;">
+                            <i class="fas fa-users-cog"></i> จัดการผู้ใช้งาน
+                        </a>
+                    </li>
+                <?php endif; ?>
                 <li><a href="logout.php">🚪 ออกจากระบบ</a></li>
             </ul>
         </div>
 
-        <!-- Main Content -->
         <div class="main-content">
             <?php
             // โหลดไฟล์หน้าต่างๆ
